@@ -85,7 +85,7 @@ const HELP = `用法: cdpctl <命令> [参数]
 const [cmd, ...rest] = process.argv.slice(2);
 const { positional, flags } = parseArgs(rest);
 
-if (!cmd || cmd === "help" || flags.help) {
+if (!cmd || cmd === "help" || cmd === "--help" || cmd === "-h" || flags.help) {
   console.log(HELP);
   process.exit(cmd ? 0 : 2);
 }
