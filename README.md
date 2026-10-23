@@ -1,5 +1,7 @@
 # browser-devkit
 
+当前版本 **1.0.2**（本地仓库，未配置远端）。
+
 用命令行驱动 openbrowser 的最小工具集：打开页面、读取内容、点击、输入、按键、滚动、等待元素。底层是 Chrome DevTools Protocol，不依赖 Playwright 或 Puppeteer。
 
 ## 依赖

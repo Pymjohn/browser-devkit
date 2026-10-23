@@ -21,6 +21,7 @@ import {
 } from "../lib/cdp.mjs";
 
 const STATE = join(homedir(), ".cache", "browser-devkit", "state.json");
+const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
 function loadState() {
   try {
@@ -64,6 +65,8 @@ function parseArgs(argv) {
 
 const HELP = `用法: cdpctl <命令> [参数]
 
+  --version                  打印版本号（当前 ${VERSION}）
+
   open <url>                 新建标签页并设为当前
   tabs                       列出所有标签页
   close [id]                 关闭当前（或指定）标签页
@@ -84,6 +87,11 @@ const HELP = `用法: cdpctl <命令> [参数]
 
 const [cmd, ...rest] = process.argv.slice(2);
 const { positional, flags } = parseArgs(rest);
+
+if (cmd === "--version" || cmd === "-v") {
+  console.log(VERSION);
+  process.exit(0);
+}
 
 if (!cmd || cmd === "help" || cmd === "--help" || cmd === "-h" || flags.help) {
   console.log(HELP);

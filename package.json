@@ -1,0 +1,13 @@
+{
+  "name": "browser-devkit",
+  "version": "1.0.2",
+  "description": "命令行驱动 openbrowser 的 CDP 交互工具",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "cdpctl": "bin/cdpctl.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
