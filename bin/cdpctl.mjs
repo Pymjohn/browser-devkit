@@ -2,22 +2,26 @@
 // 命令行驱动 openbrowser：开页、读取、点击、输入、按键、滚动、等待、截图。
 // 用法见 README 或 cdpctl --help。
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import {
-  BASE,
   closeTarget,
   connect,
   ensureViewport,
   evaluate,
+  evalInFrame,
+  fitViewport,
   listTargets,
   openPage,
   press,
   scroll,
-  click as clickEl,
-  type as typeInto,
+  setDownloadBehavior,
   waitFor,
+  waitForDownload,
+  click as clickEl,
+  clickText as clickTextEl,
+  type as typeInto,
 } from "../lib/cdp.mjs";
 
 const STATE = join(homedir(), ".cache", "browser-devkit", "state.json");
@@ -54,6 +58,9 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--selector") flags.selector = argv[++i];
+    else if (a === "--within") flags.within = argv[++i];
+    else if (a === "--pattern") flags.pattern = argv[++i];
+    else if (a === "--force") flags.force = true;
     else if (a === "--timeout") flags.timeout = Number(argv[++i]);
     else if (a === "--enter") flags.enter = true;
     else if (a === "--json") flags.json = true;
@@ -75,12 +82,18 @@ const HELP = `用法: cdpctl <命令> [参数]
   text [--selector s]        取正文（或指定元素的 innerText）
   html [--selector s]        取 outerHTML
   eval <js>                  在页面里求值，返回结果
-  click <selector>           鼠标点击元素（真实鼠标事件）
+  click <selector>           鼠标点击元素（真实鼠标事件，未命中直接报错）
+  click-text <文本>          按可见文本点击，可加 --within <选择器> 限定范围
   type <selector> <text>     聚焦输入框并输入文本
   press <Key>                按键（Enter/Tab/Escape/ArrowDown/Backspace）
   scroll <px|top|bottom>     滚动（正数向下）
   wait <selector>            等待元素出现
   viewport [w] [h]           设置虚拟视口（默认 1280×900）
+  fitviewport                让布局视口等于可见区域（修正点击偏移）
+  dl-dir <目录>              接管下载目录，绕过浏览器确认弹窗
+  dl-wait [目录] [--pattern 正则] [--timeout ms]
+                             等待下载完成，输出落盘路径
+  eval-frame <src片段> <js>  在同源 iframe 内求值
   shot <文件路径>            截图（复杂页面需窗口模式）
 
 环境变量: CDP_PORT（默认 9222）`;
@@ -173,8 +186,8 @@ try {
       const sel = positional[0];
       if (!sel) throw new Error("缺少选择器");
       const { send, close } = await ensureCurrent();
-      const how = await clickEl(send, sel);
-      console.log(`已点击 ${sel}${how === "fallback" ? "（坐标未命中，回退为 DOM 点击）" : ""}`);
+      await clickEl(send, sel);
+      console.log(`已点击 ${sel}`);
       close();
       break;
     }
@@ -247,6 +260,53 @@ try {
       console.log(`已保存 ${out}`);
       break;
     }
+    case "click-text": {
+      const text = positional.join(" ");
+      if (!text) throw new Error("用法: cdpctl click-text <文本> [--within 选择器]");
+      const { send, close } = await ensureCurrent();
+      await clickTextEl(send, text, { within: flags.within || null });
+      close();
+      console.log(`已点击文本: ${text}`);
+      break;
+    }
+    case "fitviewport": {
+      const { send, close } = await ensureCurrent();
+      const r = await fitViewport(send, { force: !!flags.force });
+      close();
+      console.log(
+        r.adjusted
+          ? `视口已对齐 ${r.width}×${r.height}（原布局 ${r.was.iw}×${r.was.ih}）`
+          : `视口一致，无需调整 ${r.iw}×${r.ih}`
+      );
+      break;
+    }
+    case "dl-dir": {
+      const dir = positional[0];
+      if (!dir) throw new Error("用法: cdpctl dl-dir <目录>");
+      mkdirSync(dir, { recursive: true });
+      await setDownloadBehavior(dir);
+      console.log(`下载已接管: ${dir}（不再弹确认框）`);
+      break;
+    }
+    case "dl-wait": {
+      const dir = positional[0] || join(homedir(), "Downloads");
+      const f = await waitForDownload(dir, {
+        pattern: flags.pattern || null,
+        timeout: flags.timeout || 180000,
+      });
+      console.log(`${f.path}  ${(f.size / 1048576).toFixed(1)} MB`);
+      break;
+    }
+    case "eval-frame": {
+      const [pattern, ...jsParts] = positional;
+      const js = jsParts.join(" ");
+      if (!pattern || !js) throw new Error("用法: cdpctl eval-frame <iframe-src片段> <js>");
+      const { send, close } = await ensureCurrent();
+      const v = await evalInFrame(send, pattern, js);
+      console.log(typeof v === "object" ? JSON.stringify(v, null, 2) : String(v));
+      close();
+      break;
+    }
     default:
       console.error(`未知命令: ${cmd}\n`);
       console.log(HELP);
@@ -260,5 +320,3 @@ try {
   process.exit(1);
 }
 
-void BASE;
-void existsSync;
